@@ -22,35 +22,51 @@ let scenePos = { x: 0, y: 0 };
 let currentSceneTransform = { x: 0, y: 0 };
 
 function setupPanning() {
-    world.addEventListener('mousedown', (e) => {
+    // Helper functions for pan logic, handling both mouse and touch events
+    const startPan = (e) => {
         if (e.target.classList.contains('island') || e.target.classList.contains('item') || e.target.id === 'ship') return;
+        
         isPanning = true;
-        startPanPos = { x: e.clientX, y: e.clientY };
+        const point = e.touches ? e.touches[0] : e;
+        startPanPos = { x: point.clientX, y: point.clientY };
         scenePos = { x: currentSceneTransform.x, y: currentSceneTransform.y };
         world.style.cursor = 'grabbing';
         sceneEl.style.transition = 'none';
-    });
+    };
 
-    window.addEventListener('mousemove', (e) => {
+    const movePan = (e) => {
         if (!isPanning) return;
-        const dx = e.clientX - startPanPos.x;
-        const dy = e.clientY - startPanPos.y;
+        
+        // Prevent default scrolling behavior on touch devices
+        if (e.touches) {
+            e.preventDefault();
+        }
+
+        const point = e.touches ? e.touches[0] : e;
+        const dx = point.clientX - startPanPos.x;
+        const dy = point.clientY - startPanPos.y;
         currentSceneTransform.x = scenePos.x + dx;
         currentSceneTransform.y = scenePos.y + dy;
         sceneEl.style.transform = `translate(${currentSceneTransform.x}px, ${currentSceneTransform.y}px)`;
-    });
+    };
 
-    window.addEventListener('mouseup', () => {
+    const endPan = () => {
         if (!isPanning) return;
         isPanning = false;
         world.style.cursor = 'grab';
-    });
+    };
 
-    world.addEventListener('mouseleave', () => {
-        if (!isPanning) return;
-        isPanning = false;
-        world.style.cursor = 'grab';
-    });
+    // Mouse events
+    world.addEventListener('mousedown', startPan);
+    window.addEventListener('mousemove', movePan);
+    window.addEventListener('mouseup', endPan);
+    world.addEventListener('mouseleave', endPan);
+
+    // Touch events for mobile
+    world.addEventListener('touchstart', startPan, { passive: false });
+    window.addEventListener('touchmove', movePan, { passive: false });
+    window.addEventListener('touchend', endPan);
+    window.addEventListener('touchcancel', endPan);
 }
 
 function centerViewOn(element) {
