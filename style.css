@@ -43,8 +43,9 @@ body, html {
 
 .island.current {
     /* Make current island larger and centered on mobile, relatively larger on desktop */
-    width: clamp(300px, 80vw, 500px);
-    height: clamp(250px, 60vw, 400px);
+    width: clamp(280px, 80vw, 500px);
+    height: clamp(230px, 60vw, 400px);
+    position: absolute; /* Explicitly set for item positioning context */
     bottom: 0;
     left: 50%;
     transform: translateX(-50%);
@@ -58,9 +59,9 @@ body, html {
     background-size: contain;
     background-repeat: no-repeat;
     position: absolute;
-    transition: all 2s ease-in-out;
-    filter: drop-shadow(3px 3px 5px rgba(0,0,0,0.4));
-    will-change: top, left;
+    transition: transform 0.3s ease, opacity 0.5s ease;
+    will-change: transform;
+    filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.5));
 }
 
 #ship.clickable:hover {
@@ -161,6 +162,7 @@ body, html {
 
 .item:hover {
     transform: scale(1.2);
+    filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.5)) drop-shadow(0 0 10px rgba(255, 255, 180, 0.7));
 }
 
 /* Mobile specific adjustments */
@@ -184,5 +186,30 @@ body, html {
     }
     #controls {
         width: 100%;
+    }
+}
+
+/* Mobile landscape adjustments */
+@media (max-height: 500px) and (min-width: 600px) {
+    #ui-container {
+        padding: 5px 20px;
+    }
+    #inventory h2 {
+        display: none;
+    }
+    #inventory-items {
+        min-height: 42px;
+    }
+    .inventory-item {
+        width: 40px;
+        height: 40px;
+    }
+    #message-log {
+        font-size: 1em;
+        min-height: 1.2em;
+    }
+    #explore-button {
+        padding: 8px 15px;
+        font-size: 0.9em;
     }
 }

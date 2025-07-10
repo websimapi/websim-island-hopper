@@ -1,4 +1,6 @@
-const scene = document.getElementById('scene');
+import * as THREE from 'three';
+
+const sceneEl = document.getElementById('scene');
 const ship = document.getElementById('ship');
 const messageLog = document.getElementById('message-log');
 const inventoryItems = document.getElementById('inventory-items');
@@ -126,7 +128,7 @@ const islands = {
         pos: { top: '20%', left: '10%' },
         size: { width: '250px', height: '250px' },
         message: "A desolate island holding an ancient artifact.",
-        item: { id: 'key', name: 'Ancient Key', img: 'key.png', pos: { bottom: '70px', left: '100px' } }
+        item: { id: 'key', name: 'Ancient Key', img: 'key.png', pos: { x: 0.5, y: 0.55 } } // Use relative positions
     },
     shield: {
         name: "Fortress Island",
@@ -135,7 +137,7 @@ const islands = {
         pos: { top: '15%', right: '8%' },
         size: { width: '300px', height: '300px' },
         message: "A powerful shield rests on this fortified island.",
-        item: { id: 'shield', name: 'Guardian Shield', img: 'shield.png', pos: { bottom: '110px', right: '110px' } }
+        item: { id: 'shield', name: 'Guardian Shield', img: 'shield.png', pos: { x: 0.5, y: 0.5 } } // Use relative positions
     },
     robot: {
         name: "Robot Island",
@@ -147,7 +149,7 @@ const islands = {
         character: {
             id: 'robot',
             img: 'robot.png',
-            pos: { bottom: '60px', left: '90px' },
+            pos: { x: 0.5, y: 0.45 }, // Use relative positions
             size: { width: '100px', height: '100px' },
             state: { hasKey: false, hasShield: false },
             onClick: async (usedItem) => {
@@ -195,8 +197,8 @@ const islands = {
 // --- SCENE & INTERACTION ---
 function renderScene() {
     // Clear previous elements except ship
-    scene.innerHTML = '';
-    scene.appendChild(ship);
+    sceneEl.innerHTML = '';
+    sceneEl.appendChild(ship);
     
     // Add explore button back if it was removed
     if (!exploreButton.parentElement) {
@@ -204,7 +206,7 @@ function renderScene() {
     }
     
     const currentIslandData = islands[currentIslandId];
-    scene.style.backgroundImage = `url(${currentIslandData.bg})`;
+    sceneEl.style.backgroundImage = `url(${currentIslandData.bg})`;
     messageLog.textContent = currentIslandData.message;
 
     // Render other islands
@@ -220,7 +222,7 @@ function renderScene() {
         if (posStyle.left && posStyle.right) delete posStyle.right;
         Object.assign(islandEl.style, posStyle, islandData.size);
         islandEl.onclick = () => travelTo(id);
-        scene.appendChild(islandEl);
+        sceneEl.appendChild(islandEl);
     }
     
     // Render current island's special features
@@ -235,32 +237,48 @@ function renderCurrentIslandDetails() {
     currentIslandEl.id = currentIslandId;
     currentIslandEl.className = 'island current';
     currentIslandEl.style.backgroundImage = `url(${islandData.img})`;
-    scene.appendChild(currentIslandEl);
+    sceneEl.appendChild(currentIslandEl);
     
-    // Render item if it exists and hasn't been collected
-    if (islandData.item && !inventory[islandData.item.id]) {
-        const itemEl = document.createElement('div');
-        itemEl.className = 'item';
-        itemEl.style.backgroundImage = `url(${islandData.item.img})`;
-        Object.assign(itemEl.style, islandData.item.pos);
-        itemEl.onclick = () => collectItem(islandData.item, itemEl);
-        currentIslandEl.appendChild(itemEl);
-    }
+    // Use an observer to position items after the island has been rendered and sized by CSS
+    const observer = new ResizeObserver(entries => {
+        const islandRect = entries[0].contentRect;
+        
+        // Render item if it exists and hasn't been collected
+        if (islandData.item && !inventory[islandData.item.id]) {
+            const itemEl = currentIslandEl.querySelector('.item.collectible') || document.createElement('div');
+            if (!itemEl.isConnected) {
+                itemEl.className = 'item collectible';
+                itemEl.style.backgroundImage = `url(${islandData.item.img})`;
+                itemEl.onclick = () => collectItem(islandData.item, itemEl);
+                currentIslandEl.appendChild(itemEl);
+            }
+            // Position based on relative coordinates
+            itemEl.style.left = `${islandData.item.pos.x * islandRect.width - itemEl.offsetWidth / 2}px`;
+            itemEl.style.top = `${islandData.item.pos.y * islandRect.height - itemEl.offsetHeight / 2}px`;
+        }
 
-    // Render character if it exists
-    if (islandData.character) {
-        const charData = islandData.character;
-        const charEl = document.createElement('div');
-        charEl.className = 'item'; // Re-use item styling for hover effects
-        charEl.style.backgroundImage = `url(${charData.img})`;
-        Object.assign(charEl.style, charData.pos, charData.size);
-        charEl.onclick = (e) => {
-            e.stopPropagation(); // prevent clicks on character from propagating to island
-            playSound('click.mp3');
-            charData.onClick(selectedItem);
-        };
-        currentIslandEl.appendChild(charEl);
-    }
+        // Render character if it exists
+        if (islandData.character) {
+            const charData = islandData.character;
+            const charEl = currentIslandEl.querySelector('.item.character') || document.createElement('div');
+            if (!charEl.isConnected) {
+                charEl.className = 'item character';
+                charEl.style.backgroundImage = `url(${charData.img})`;
+                Object.assign(charEl.style, charData.size);
+                charEl.onclick = (e) => {
+                    e.stopPropagation();
+                    playSound('click.mp3');
+                    charData.onClick(selectedItem);
+                };
+                currentIslandEl.appendChild(charEl);
+            }
+            // Position based on relative coordinates
+            charEl.style.left = `${charData.pos.x * islandRect.width - charEl.offsetWidth / 2}px`;
+            charEl.style.top = `${charData.pos.y * islandRect.height - charEl.offsetHeight / 2}px`;
+        }
+    });
+
+    observer.observe(currentIslandEl);
 }
 
 function travelTo(islandId) {
@@ -269,14 +287,14 @@ function travelTo(islandId) {
     playSound('travel.mp3');
     const targetIsland = document.getElementById(islandId);
     const targetRect = targetIsland.getBoundingClientRect();
-    const sceneRect = scene.getBoundingClientRect();
+    const sceneRect = sceneEl.getBoundingClientRect();
 
     ship.style.left = `${targetRect.left - sceneRect.left + targetRect.width / 2 - ship.width / 2}px`;
     ship.style.top = `${targetRect.top - sceneRect.top + targetRect.height / 2 - ship.height / 2}px`;
     
     // Disable clicking while traveling
     ship.style.pointerEvents = 'none';
-    scene.querySelectorAll('.island').forEach(el => el.style.pointerEvents = 'none');
+    sceneEl.querySelectorAll('.island').forEach(el => el.style.pointerEvents = 'none');
 
 
     setTimeout(() => {
