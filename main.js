@@ -15,58 +15,146 @@ let audioContext;
 const soundBuffers = {};
 let isExploring = false;
 
-// --- World Panning ---
+// --- World Panning & Zooming ---
 let isPanning = false;
+let isPinching = false;
 let startPanPos = { x: 0, y: 0 };
 let scenePos = { x: 0, y: 0 };
 let currentSceneTransform = { x: 0, y: 0 };
+let currentScale = 1.0;
+const MIN_SCALE = 0.3;
+const MAX_SCALE = 2.5;
+let startPinchDist = 0;
+let pinchStartScale = 1.0;
 
-function setupPanning() {
-    // Helper functions for pan logic, handling both mouse and touch events
-    const startPan = (e) => {
+function updateSceneTransform() {
+    // Round values to avoid floating point inaccuracies causing jitter
+    const x = Math.round(currentSceneTransform.x * 100) / 100;
+    const y = Math.round(currentSceneTransform.y * 100) / 100;
+    const scale = Math.round(currentScale * 1000) / 1000;
+    sceneEl.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+}
+
+function setupPanningAndZooming() {
+    const start = (e) => {
         if (e.target.classList.contains('island') || e.target.classList.contains('item') || e.target.id === 'ship') return;
         
-        isPanning = true;
-        const point = e.touches ? e.touches[0] : e;
-        startPanPos = { x: point.clientX, y: point.clientY };
-        scenePos = { x: currentSceneTransform.x, y: currentSceneTransform.y };
-        world.style.cursor = 'grabbing';
         sceneEl.style.transition = 'none';
-    };
-
-    const movePan = (e) => {
-        if (!isPanning) return;
         
-        // Prevent default scrolling behavior on touch devices
         if (e.touches) {
-            e.preventDefault();
+            if (e.touches.length >= 2) {
+                isPanning = false;
+                isPinching = true;
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                startPinchDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+                pinchStartScale = currentScale;
+            } else if (e.touches.length === 1) {
+                isPinching = false;
+                isPanning = true;
+                const point = e.touches[0];
+                startPanPos = { x: point.clientX, y: point.clientY };
+                scenePos = { ...currentSceneTransform };
+                world.style.cursor = 'grabbing';
+            }
+        } else { // Mouse event
+            isPinching = false;
+            isPanning = true;
+            startPanPos = { x: e.clientX, y: e.clientY };
+            scenePos = { ...currentSceneTransform };
+            world.style.cursor = 'grabbing';
         }
-
-        const point = e.touches ? e.touches[0] : e;
-        const dx = point.clientX - startPanPos.x;
-        const dy = point.clientY - startPanPos.y;
-        currentSceneTransform.x = scenePos.x + dx;
-        currentSceneTransform.y = scenePos.y + dy;
-        sceneEl.style.transform = `translate(${currentSceneTransform.x}px, ${currentSceneTransform.y}px)`;
     };
 
-    const endPan = () => {
-        if (!isPanning) return;
+    const move = (e) => {
+        if (isPinching && e.touches && e.touches.length >= 2) {
+            e.preventDefault();
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+            
+            if (startPinchDist === 0) return;
+            
+            const scaleRatio = currentDist / startPinchDist;
+            const newScale = pinchStartScale * scaleRatio;
+            const clampedScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+
+            const pinchMidpoint = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+            const worldRect = world.getBoundingClientRect();
+            const mouseX = pinchMidpoint.x - worldRect.left;
+            const mouseY = pinchMidpoint.y - worldRect.top;
+
+            // The point on the scene that is under the mouse
+            const scenePointX = (mouseX - currentSceneTransform.x) / currentScale;
+            const scenePointY = (mouseY - currentSceneTransform.y) / currentScale;
+            
+            // The new transform to keep that point under the mouse
+            const newTransformX = mouseX - scenePointX * clampedScale;
+            const newTransformY = mouseY - scenePointY * clampedScale;
+            
+            currentSceneTransform.x = newTransformX;
+            currentSceneTransform.y = newTransformY;
+            currentScale = clampedScale;
+
+            updateSceneTransform();
+
+        } else if (isPanning) {
+            if (e.touches) e.preventDefault();
+            
+            const point = e.touches ? e.touches[0] : e;
+            const dx = point.clientX - startPanPos.x;
+            const dy = point.clientY - startPanPos.y;
+            currentSceneTransform.x = scenePos.x + dx;
+            currentSceneTransform.y = scenePos.y + dy;
+            updateSceneTransform();
+        }
+    };
+
+    const end = (e) => {
+        // If one finger is lifted from a pinch, transition to panning
+        if (e.touches && e.touches.length > 0) {
+            start(e);
+            return;
+        }
         isPanning = false;
+        isPinching = false;
         world.style.cursor = 'grab';
     };
 
+    const zoom = (e) => {
+        e.preventDefault();
+        sceneEl.style.transition = 'none';
+
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        const newScale = currentScale + delta;
+        const clampedScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+
+        const worldRect = world.getBoundingClientRect();
+        const mouseX = e.clientX - worldRect.left;
+        const mouseY = e.clientY - worldRect.top;
+
+        const scenePointX = (mouseX - currentSceneTransform.x) / currentScale;
+        const scenePointY = (mouseY - currentSceneTransform.y) / currentScale;
+        
+        currentSceneTransform.x = mouseX - scenePointX * clampedScale;
+        currentSceneTransform.y = mouseY - scenePointY * clampedScale;
+        currentScale = clampedScale;
+
+        updateSceneTransform();
+    };
+
     // Mouse events
-    world.addEventListener('mousedown', startPan);
-    window.addEventListener('mousemove', movePan);
-    window.addEventListener('mouseup', endPan);
-    world.addEventListener('mouseleave', endPan);
+    world.addEventListener('mousedown', start);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    world.addEventListener('mouseleave', end);
+    world.addEventListener('wheel', zoom, { passive: false });
 
     // Touch events for mobile
-    world.addEventListener('touchstart', startPan, { passive: false });
-    window.addEventListener('touchmove', movePan, { passive: false });
-    window.addEventListener('touchend', endPan);
-    window.addEventListener('touchcancel', endPan);
+    world.addEventListener('touchstart', start, { passive: false });
+    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('touchend', end);
+    window.addEventListener('touchcancel', end);
 }
 
 function centerViewOn(element) {
@@ -75,14 +163,23 @@ function centerViewOn(element) {
     const worldRect = world.getBoundingClientRect();
     const elementRect = element.getBoundingClientRect();
 
-    // Calculate the translation needed to center the element
-    const targetX = worldRect.width / 2 - (elementRect.left - currentSceneTransform.x) - elementRect.width / 2;
-    const targetY = worldRect.height / 2 - (elementRect.top - currentSceneTransform.y) - elementRect.height / 2;
+    // The element's center, relative to the viewport.
+    const elementCenterX = elementRect.left + elementRect.width / 2;
+    const elementCenterY = elementRect.top + elementRect.height / 2;
+    
+    // The world's center, relative to the viewport.
+    const worldCenterX = worldRect.left + worldRect.width / 2;
+    const worldCenterY = worldRect.top + worldRect.height / 2;
 
-    currentSceneTransform.x = targetX;
-    currentSceneTransform.y = targetY;
+    // The distance the element's center is from the world's center.
+    const dx = worldCenterX - elementCenterX;
+    const dy = worldCenterY - elementCenterY;
 
-    sceneEl.style.transform = `translate(${targetX}px, ${targetY}px)`;
+    // We add this delta to the current translation to shift the scene accordingly.
+    currentSceneTransform.x += dx;
+    currentSceneTransform.y += dy;
+    
+    updateSceneTransform();
 
     setTimeout(() => {
         sceneEl.style.transition = 'none';
@@ -196,7 +293,7 @@ const islands = {
         bg: 'background.png',
         pos: { top: '1000px', left: '1500px' }, // Center of the world
         size: { width: '300px', height: '200px' },
-        message: "This is where your journey begins. Drag the world to look around, and click an island to travel."
+        message: "This is where your journey begins. Drag the background to look around, and click an island to travel."
     },
     key: {
         name: "Key Island",
@@ -504,7 +601,7 @@ function setupInitialState() {
     };
     exploreButton.onclick = generateNewIsland;
     renderScene();
-    setupPanning();
+    setupPanningAndZooming();
 }
 
 setupInitialState();
