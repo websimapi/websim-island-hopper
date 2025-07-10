@@ -108,7 +108,48 @@ body, html {
     flex-grow: 1;
     display: flex;
     justify-content: center;
+    align-items: center;
+    gap: 15px;
     order: 1;
+}
+
+#zoom-controls {
+    display: flex;
+}
+
+.zoom-button {
+    width: 40px;
+    height: 40px;
+    background-color: #38304c;
+    color: white;
+    border: 2px solid #8e63b6;
+    border-radius: 8px;
+    font-size: 1.5em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.3s;
+    line-height: 36px;
+    padding: 0;
+    user-select: none;
+}
+.zoom-button:hover {
+    background-color: #4a4063;
+    transform: scale(1.05);
+}
+.zoom-button:active {
+    transform: scale(0.98);
+}
+
+#zoom-out-button {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right-width: 1px;
+}
+
+#zoom-in-button {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left-width: 1px;
 }
 
 #explore-button {

@@ -7,6 +7,8 @@ const ship = document.getElementById('ship');
 const messageLog = document.getElementById('message-log');
 const inventoryItems = document.getElementById('inventory-items');
 const exploreButton = document.getElementById('explore-button');
+const zoomInButton = document.getElementById('zoom-in-button');
+const zoomOutButton = document.getElementById('zoom-out-button');
 
 let currentIslandId = 'main';
 let inventory = {};
@@ -17,14 +19,12 @@ let isExploring = false;
 
 // --- World Panning & Zooming ---
 let isPanning = false;
-let isPinching = false;
 let startPanPos = { x: 0, y: 0 };
 let scenePos = { x: 0, y: 0 };
 let currentSceneTransform = { x: 0, y: 0 };
-let currentScale = 1.0;
-const minScale = 0.3;
-const maxScale = 2.0;
-let lastPinchDist = 0;
+let currentScale = 1;
+const MIN_SCALE = 0.4;
+const MAX_SCALE = 2.0;
 
 function updateSceneTransform() {
     sceneEl.style.transform = `translate(${currentSceneTransform.x}px, ${currentSceneTransform.y}px) scale(${currentScale})`;
@@ -35,21 +35,7 @@ function setupPanning() {
     const startPan = (e) => {
         if (e.target.classList.contains('island') || e.target.classList.contains('item') || e.target.id === 'ship') return;
         
-        if (e.touches) {
-            if (e.touches.length === 2) { // Pinch start
-                isPinching = true;
-                isPanning = false;
-                const dx = e.touches[0].clientX - e.touches[1].clientX;
-                const dy = e.touches[0].clientY - e.touches[1].clientY;
-                lastPinchDist = Math.sqrt(dx * dx + dy * dy);
-                sceneEl.style.transition = 'none';
-                return;
-            }
-            // Fall through to 1-touch pan
-        }
-        
         isPanning = true;
-        isPinching = false;
         const point = e.touches ? e.touches[0] : e;
         startPanPos = { x: point.clientX, y: point.clientY };
         scenePos = { x: currentSceneTransform.x, y: currentSceneTransform.y };
@@ -65,71 +51,18 @@ function setupPanning() {
             e.preventDefault();
         }
 
-        if (isPinching && e.touches && e.touches.length === 2) {
-             // Pinch move
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            const currentPinchDist = Math.sqrt(dx * dx + dy * dy);
-            
-            const worldRect = world.getBoundingClientRect();
-            const pinchCenter = {
-                x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - worldRect.left,
-                y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - worldRect.top
-            };
-
-            const zoomFactor = currentPinchDist / lastPinchDist;
-            lastPinchDist = currentPinchDist;
-
-            const oldScale = currentScale;
-            let newScale = oldScale * zoomFactor;
-            newScale = Math.max(minScale, Math.min(maxScale, newScale));
-
-            if (newScale === oldScale) return;
-
-            currentSceneTransform.x = pinchCenter.x - (pinchCenter.x - currentSceneTransform.x) * (newScale / oldScale);
-            currentSceneTransform.y = pinchCenter.y - (pinchCenter.y - currentSceneTransform.y) * (newScale / oldScale);
-            currentScale = newScale;
-            
-            updateSceneTransform();
-
-        } else if (isPanning) {
-            const point = e.touches ? e.touches[0] : e;
-            const dx = point.clientX - startPanPos.x;
-            const dy = point.clientY - startPanPos.y;
-            currentSceneTransform.x = scenePos.x + dx;
-            currentSceneTransform.y = scenePos.y + dy;
-            updateSceneTransform();
-        }
-    };
-
-    const endPan = (e) => {
-        if (e.touches && e.touches.length > 0) return; // Still fingers down
-        isPanning = false;
-        isPinching = false;
-        world.style.cursor = 'grab';
-    };
-    
-    const onWheel = (e) => {
-        e.preventDefault();
-        
-        const oldScale = currentScale;
-        const zoomAmount = 0.1;
-        let newScale = e.deltaY > 0 ? oldScale - zoomAmount : oldScale + zoomAmount;
-        newScale = Math.max(minScale, Math.min(maxScale, newScale));
-
-        if (newScale === oldScale) return;
-
-        const worldRect = world.getBoundingClientRect();
-        const mouse = {
-            x: e.clientX - worldRect.left,
-            y: e.clientY - worldRect.top,
-        };
-
-        currentSceneTransform.x = mouse.x - (mouse.x - currentSceneTransform.x) * (newScale / oldScale);
-        currentSceneTransform.y = mouse.y - (mouse.y - currentSceneTransform.y) * (newScale / oldScale);
-        currentScale = newScale;
-
+        const point = e.touches ? e.touches[0] : e;
+        const dx = point.clientX - startPanPos.x;
+        const dy = point.clientY - startPanPos.y;
+        currentSceneTransform.x = scenePos.x + dx;
+        currentSceneTransform.y = scenePos.y + dy;
         updateSceneTransform();
+    };
+
+    const endPan = () => {
+        if (!isPanning) return;
+        isPanning = false;
+        world.style.cursor = 'grab';
     };
 
     // Mouse events
@@ -137,7 +70,6 @@ function setupPanning() {
     window.addEventListener('mousemove', movePan);
     window.addEventListener('mouseup', endPan);
     world.addEventListener('mouseleave', endPan);
-    world.addEventListener('wheel', onWheel, { passive: false });
 
     // Touch events for mobile
     world.addEventListener('touchstart', startPan, { passive: false });
@@ -150,16 +82,11 @@ function centerViewOn(element) {
     sceneEl.style.transition = 'transform 2s ease-in-out';
     
     const worldRect = world.getBoundingClientRect();
-    
-    // Convert right/bottom positioning to left/top for calculation
-    const sceneWidth = sceneEl.offsetWidth;
-    const sceneHeight = sceneEl.offsetHeight;
-    let elStyleX = element.style.left ? parseFloat(element.style.left) : sceneWidth - parseFloat(element.style.right) - element.offsetWidth;
-    let elStyleY = element.style.top ? parseFloat(element.style.top) : sceneHeight - parseFloat(element.style.bottom) - element.offsetHeight;
+    const elementRect = element.getBoundingClientRect();
 
     // Calculate the translation needed to center the element, accounting for current scale
-    const targetX = (worldRect.width / 2) - (elStyleX + element.offsetWidth / 2) * currentScale;
-    const targetY = (worldRect.height / 2) - (elStyleY + element.offsetHeight / 2) * currentScale;
+    const targetX = worldRect.width / 2 - (element.offsetLeft + element.offsetWidth / 2) * currentScale;
+    const targetY = worldRect.height / 2 - (element.offsetTop + element.offsetHeight / 2) * currentScale;
 
     currentSceneTransform.x = targetX;
     currentSceneTransform.y = targetY;
@@ -169,6 +96,44 @@ function centerViewOn(element) {
     setTimeout(() => {
         sceneEl.style.transition = 'none';
     }, 2000); // Match transition duration
+}
+
+function zoom(direction) {
+    playSound('click.mp3');
+    sceneEl.style.transition = 'transform 0.2s ease-out';
+    
+    const scaleAmount = currentScale * 0.2; // Zoom by 20% of current scale for smoother feel
+    const oldScale = currentScale;
+
+    if (direction > 0) { // zoom in
+        currentScale = Math.min(MAX_SCALE, currentScale + scaleAmount);
+    } else { // zoom out
+        currentScale = Math.max(MIN_SCALE, currentScale - scaleAmount);
+    }
+
+    if (oldScale === currentScale) { // Reached min/max
+        sceneEl.style.transition = 'none';
+        return;
+    }
+
+    // Zoom towards the center of the viewport
+    const worldRect = world.getBoundingClientRect();
+    const viewportCenterX = worldRect.width / 2;
+    const viewportCenterY = worldRect.height / 2;
+
+    // Calculate the point in the scene that is currently at the center of the viewport
+    const scenePointX = (viewportCenterX - currentSceneTransform.x) / oldScale;
+    const scenePointY = (viewportCenterY - currentSceneTransform.y) / oldScale;
+
+    // Calculate the new translation to keep that point at the center
+    currentSceneTransform.x = viewportCenterX - scenePointX * currentScale;
+    currentSceneTransform.y = viewportCenterY - scenePointY * currentScale;
+
+    updateSceneTransform();
+
+    setTimeout(() => {
+        sceneEl.style.transition = 'none';
+    }, 200);
 }
 
 // --- AUDIO ---
@@ -278,7 +243,7 @@ const islands = {
         bg: 'background.png',
         pos: { top: '1000px', left: '1500px' }, // Center of the world
         size: { width: '300px', height: '200px' },
-        message: "This is where your journey begins. Drag the world to look around, and click an island to travel."
+        message: "This is where your journey begins. Drag the background to look around, and click an island to travel."
     },
     key: {
         name: "Key Island",
@@ -585,6 +550,8 @@ function setupInitialState() {
         }
     };
     exploreButton.onclick = generateNewIsland;
+    zoomInButton.onclick = () => zoom(1);
+    zoomOutButton.onclick = () => zoom(-1);
     renderScene();
     setupPanning();
 }
